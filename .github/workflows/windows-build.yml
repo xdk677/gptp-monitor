@@ -1,0 +1,45 @@
+name: Windows build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Install Npcap
+        shell: pwsh
+        run: |
+          choco install npcap -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "Npcap installation failed." }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          python -m pytest tests -q
+          python -m gptp_monitor.gui --offscreen --smoke-ui
+
+      - name: Build release
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/build.ps1 -SkipTests
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: GPTPSyncMonitor-v1.0.0
+          path: release/*.zip

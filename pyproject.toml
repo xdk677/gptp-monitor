@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gptp-monitor"
+version = "1.0.0"
+description = "Windows gPTP Master and Slave analysis monitor"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "xdk677" }]
+dependencies = [
+  "PyQt5==5.15.11",
+  "scapy==2.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.0.3",
+  "pytest-html==4.2.0",
+  "pyinstaller==6.20.0",
+]
+
+[project.scripts]
+gptp-monitor = "gptp_monitor.gui.app:main"
+gptp-monitor-cli = "gptp_monitor.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-q"]

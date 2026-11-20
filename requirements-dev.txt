@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest==9.0.3
+pytest-html==4.2.0
+pyinstaller==6.20.0
