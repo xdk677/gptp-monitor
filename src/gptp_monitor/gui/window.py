@@ -22,6 +22,7 @@ from gptp_monitor.master import (
     MasterSnapshot,
     PeerState,
 )
+from gptp_monitor.slave import TimeReliability
 
 
 MASTER_COLUMNS = (
@@ -82,6 +83,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_pdelay_successes = 0
         self._last_delay = None
         self._last_logged_error = ""
+        self._last_reliability: str | None = None
+        self._last_reliability_class: int | None = None
         self._last_sync_table_signature: tuple[object, ...] | None = None
         self._last_master_signature: tuple[object, ...] | None = None
         self._last_master_message_counts: dict[str, int] = {}
@@ -341,6 +344,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.gm_label.setWordWrap(True)
         self.gm_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         status.addWidget(self.gm_label, 0, 1, 1, 2)
+        self.reliability_label = QtWidgets.QLabel("UNKNOWN")
+        self.reliability_label.setStyleSheet(
+            "font-size: 14px; font-weight: 700; color: #8fa3b8;"
+        )
+        self.reliability_label.setMinimumWidth(0)
+        status.addWidget(self.reliability_label, 0, 3)
         status.setColumnStretch(1, 1)
         self.error_label = QtWidgets.QLabel("Errors: 0")
         self.error_label.setWordWrap(True)
@@ -418,6 +427,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._last_pdelay_successes = 0
             self._last_delay = None
             self._last_logged_error = ""
+            self._last_reliability = None
+            self._last_reliability_class = None
             self._last_sync_table_signature = None
             self._last_master_signature = None
             self._last_master_message_counts = {}
@@ -564,21 +575,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.state_label.setText(
                 str(getattr(state, "value", state or "--"))
             )
-            gm = snapshot.get("grandmaster_identity")
-            if not gm:
-                self.gm_label.setText("GM: --")
-            else:
-                last_update = snapshot.get("last_update_monotonic_ns")
-                age_text = ""
-                if last_update:
-                    age_ns = max(
-                        0,
-                        time.monotonic_ns() - int(last_update),
-                    )
-                    age_text = f"  age {age_ns / 1_000_000:.1f} ms"
-                self.gm_label.setText(
-                    f"GM: {bytes(gm).hex()}{age_text}"
-                )
+            self._apply_reliability(snapshot)
             offset = snapshot.get("offset_ns")
             raw_offset = snapshot.get("raw_offset_ns")
             delay = snapshot.get("path_delay_ns")
@@ -996,6 +993,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_master_message_counts = {}
         self._last_peer_pdelay_successes = {}
         self._last_logged_error = ""
+        self._last_reliability = None
+        self._last_reliability_class = None
         self._clear_slave_metrics()
         self._clear_master_metrics()
         self.error_label.setText("Errors: 0")
@@ -1052,8 +1051,89 @@ class MainWindow(QtWidgets.QMainWindow):
         number = int(value)
         return f"{number:,} ns ({number / 1_000_000:+.3f} ms)"
 
+    @staticmethod
+    def _format_age(value: object) -> str:
+        if value is None:
+            return "--"
+        milliseconds = int(value) / 1_000_000
+        if milliseconds >= 1000:
+            return f"{milliseconds / 1000:.2f}s"
+        return f"{milliseconds:.1f}ms"
+
+    def _apply_reliability(self, snapshot: Mapping[str, object]) -> None:
+        value = snapshot.get("reliability", TimeReliability.UNKNOWN)
+        state = str(getattr(value, "value", value or "UNKNOWN"))
+        clock_class = snapshot.get("grandmaster_clock_class")
+        colors = {
+            "GNSS_LOCKED": "#31c48d",
+            "WAITING_GNSS": "#f3b33d",
+            "TRANSITIONING": "#f3b33d",
+            "DEGRADED": "#ef4444",
+            "STALE": "#ef4444",
+            "UNKNOWN": "#8fa3b8",
+        }
+        color = colors.get(state, colors["UNKNOWN"])
+        self.reliability_label.setText(state)
+        self.reliability_label.setStyleSheet(
+            "font-size: 14px; font-weight: 700; " f"color: {color};"
+        )
+
+        gm = snapshot.get("grandmaster_identity")
+        identity = "--" if not gm else bytes(gm).hex()
+        sequence = snapshot.get("announce_sequence_id")
+        age = snapshot.get("announce_age_ns")
+        steps = snapshot.get("grandmaster_steps_removed")
+        accuracy = snapshot.get("grandmaster_clock_accuracy")
+        variance = snapshot.get("grandmaster_clock_variance")
+        source = snapshot.get("grandmaster_time_source")
+        class_text = "--" if clock_class is None else str(clock_class)
+        self.gm_label.setText(
+            f"GM: {identity} class={class_text} "
+            f"seq={sequence if sequence is not None else '--'} "
+            f"age={self._format_age(age)} "
+            f"steps={steps if steps is not None else '--'}"
+        )
+        tooltip = "\n".join(
+            (
+                f"clockIdentity: {identity}",
+                f"clockClass: {class_text}",
+                f"clockAccuracy: {hex(accuracy) if accuracy is not None else '--'}",
+                f"clockVariance: {variance if variance is not None else '--'}",
+                f"timeSource: {hex(source) if source is not None else '--'}",
+                f"stepsRemoved: {steps if steps is not None else '--'}",
+            )
+        )
+        self.gm_label.setToolTip(tooltip)
+        self.reliability_label.setToolTip(tooltip)
+
+        if (
+            state != self._last_reliability
+            or clock_class != self._last_reliability_class
+        ):
+            previous = self._last_reliability or "UNKNOWN"
+            previous_class = (
+                "--"
+                if self._last_reliability_class is None
+                else self._last_reliability_class
+            )
+            self.log.appendPlainText(
+                f"{time.strftime('%H:%M:%S')} "
+                f"clockClass {previous_class} -> {class_text}, "
+                f"{previous} -> {state}"
+            )
+            self._last_reliability = state
+            self._last_reliability_class = (
+                None if clock_class is None else int(clock_class)
+            )
+
     def _clear_slave_metrics(self) -> None:
         self.gm_label.setText("GM: --")
+        self.gm_label.setToolTip("")
+        self.reliability_label.setText("UNKNOWN")
+        self.reliability_label.setStyleSheet(
+            "font-size: 14px; font-weight: 700; color: #8fa3b8;"
+        )
+        self.reliability_label.setToolTip("")
         self.offset_label.setText("Offset: --")
         self.delay_label.setText("Path delay: --")
         self.ppm_label.setText("Frequency: --")

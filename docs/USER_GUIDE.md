@@ -58,6 +58,18 @@ If no Announce is received, the analyzer can lock to a valid Sync source.
 If Pdelay is unavailable, the GUI shows `Offset(raw)` and
 `DELAY PENDING`.
 
+The reliability badge comes from the Grandmaster Announce clockClass:
+
+- `GNSS_LOCKED` (class 6): GNSS has synchronized to gPTP.
+- `WAITING_GNSS` (class 248): waiting for GNSS synchronization.
+- `DEGRADED` (class 13): degraded state, for example antenna loss.
+- `TRANSITIONING` (class 52): reset transition.
+- `UNKNOWN`: no recognized class.
+- `STALE`: no fresh Announce within three seconds.
+
+Hover the Grandmaster line to see clockAccuracy, variance, timeSource and the
+full identity. A class-6 state is only reliable while Announce remains fresh.
+
 ## 7. Charts and details
 
 - Hover a table cell for complete MAC, portIdentity, sequence and RTT values.

@@ -77,6 +77,31 @@ time is behind.
 `Offset(raw)` is shown when Pdelay is unavailable. It includes one-way link
 delay and timestamping error and must not be treated as calibrated offset.
 
+## GNSS time reliability
+
+Slave mode reads the Grandmaster `clockClass` from Announce and displays both
+the raw value and a reliability state:
+
+| clockClass | State | Meaning |
+| --- | --- | --- |
+| 6 | `GNSS_LOCKED` | GNSS time is synchronized to gPTP |
+| 248 | `WAITING_GNSS` | Power-up/default or GNSS not synchronized |
+| 13 | `DEGRADED` | Degraded or holdover state after antenna loss |
+| 52 | `TRANSITIONING` | Transitional state after a PB reset |
+| other | `UNKNOWN` | Undefined clock class |
+
+`STALE` overrides the mapping when the latest Announce is more than three
+seconds old. A formerly locked class 6 therefore cannot continue to appear
+reliable after Announce traffic stops.
+
+The Grandmaster line also shows Announce sequence, Announce age and
+stepsRemoved. Its tooltip contains clockAccuracy, clockVariance, timeSource,
+and the complete clockIdentity.
+
+`GNSS_LOCKED` means the Grandmaster claims GNSS traceability. It does not by
+itself prove offset accuracy; combine it with Sync freshness and the measured
+offset when investigating timing quality.
+
 ## Frequency
 
 ```text

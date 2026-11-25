@@ -1448,6 +1448,69 @@ def test_main_window_shows_grandmaster_update_age():
     app.processEvents()
 
 
+def test_slave_clock_class_reliability_badge_and_transition_log():
+    from PyQt5 import QtWidgets
+
+    from gptp_monitor.gui.window import MainWindow
+    from gptp_monitor.slave import SlaveState, TimeReliability
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    window = MainWindow(
+        interface_names=["Ethernet 4"],
+        controller=object(),
+    )
+    base = {
+        "role": "slave",
+        "state": SlaveState.SYNCING,
+        "grandmaster_identity": bytes.fromhex("8e616ffffe952e36"),
+        "grandmaster_clock_accuracy": 0xFE,
+        "grandmaster_clock_variance": 0xFFFF,
+        "grandmaster_steps_removed": 0,
+        "grandmaster_time_source": 0xA0,
+        "announce_sequence_id": 29,
+        "announce_age_ns": 120_000_000,
+        "errors": 0,
+        "recent_syncs": (),
+    }
+    cases = (
+        (248, TimeReliability.WAITING_GNSS),
+        (6, TimeReliability.GNSS_LOCKED),
+        (13, TimeReliability.DEGRADED),
+        (52, TimeReliability.TRANSITIONING),
+        (77, TimeReliability.UNKNOWN),
+        (6, TimeReliability.STALE),
+    )
+    for clock_class, reliability in cases:
+        window.apply_snapshot(
+            {
+                **base,
+                "grandmaster_clock_class": clock_class,
+                "reliability": reliability,
+            }
+        )
+        assert window.reliability_label.text() == reliability.value
+        assert f"class={clock_class}" in window.gm_label.text()
+        assert "seq=29" in window.gm_label.text()
+        assert "0xfe" in window.gm_label.toolTip()
+        assert "0xa0" in window.gm_label.toolTip()
+
+    text = window.log.toPlainText()
+    assert text.count("WAITING_GNSS -> GNSS_LOCKED") == 1
+    window.apply_snapshot(
+        {
+            **base,
+            "grandmaster_clock_class": 6,
+            "reliability": TimeReliability.GNSS_LOCKED,
+        }
+    )
+    assert (
+        window.log.toPlainText().count("WAITING_GNSS -> GNSS_LOCKED")
+        == 1
+    )
+    window.close()
+    app.processEvents()
+
+
 def test_controller_master_snapshot_contains_structured_data():
     from gptp_monitor.gui.controller import SessionThread
     from gptp_monitor.master import GPTPConfig, GPTPMaster
