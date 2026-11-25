@@ -20,6 +20,7 @@ from gptp_monitor.slave import (
     SlaveAnalyzer,
     SlaveConfig,
     SlaveState,
+    TimeReliability,
 )
 
 
@@ -139,6 +140,70 @@ def test_slave_relocks_after_announce_timeout():
     assert snapshot.grandmaster_identity == bytes.fromhex(
         "6805cafffe3f5621"
     )
+
+
+def test_clock_class_maps_to_reliability_and_updates_in_sequence():
+    analyzer = SlaveAnalyzer(SlaveConfig(), send_frame=lambda _: None)
+    for index, (clock_class, expected) in enumerate((
+        (248, TimeReliability.WAITING_GNSS),
+        (6, TimeReliability.GNSS_LOCKED),
+        (13, TimeReliability.DEGRADED),
+        (6, TimeReliability.GNSS_LOCKED),
+        (52, TimeReliability.TRANSITIONING),
+        (77, TimeReliability.UNKNOWN),
+    )):
+        analyzer.handle_frame(
+            _builder().announce(
+                sequence_id=index,
+                timestamp=PtpTimestamp(1, 0),
+                clock_class=clock_class,
+                clock_accuracy=0xFE,
+                variance=0xFFFF,
+                priority1=127,
+                priority2=127,
+                steps_removed=0,
+                time_source=0xA0,
+            ),
+            received_ns=index,
+            monotonic_ns=index,
+        )
+        snapshot = analyzer.snapshot(monotonic_ns=index)
+        assert snapshot.grandmaster_clock_class == clock_class
+        assert snapshot.announce_sequence_id == index
+        assert snapshot.grandmaster_clock_accuracy == 0xFE
+        assert snapshot.grandmaster_clock_variance == 0xFFFF
+        assert snapshot.grandmaster_steps_removed == 0
+        assert snapshot.grandmaster_time_source == 0xA0
+        assert snapshot.reliability == expected
+
+
+def test_class_6_becomes_stale_after_three_seconds_without_announce():
+    analyzer = SlaveAnalyzer(SlaveConfig(), send_frame=lambda _: None)
+    analyzer.handle_frame(
+        _builder().announce(
+            timestamp=PtpTimestamp(1, 0),
+            clock_class=6,
+        ),
+        received_ns=1,
+        monotonic_ns=1_000_000_000,
+    )
+    live = analyzer.snapshot(monotonic_ns=3_500_000_000)
+    assert live.reliability == TimeReliability.GNSS_LOCKED
+    assert live.announce_age_ns == 2_500_000_000
+
+    stale = analyzer.snapshot(monotonic_ns=4_100_000_000)
+    assert stale.reliability == TimeReliability.STALE
+    assert stale.grandmaster_clock_class == 6
+    assert stale.announce_age_ns == 3_100_000_000
+
+
+def test_no_announce_never_reports_locked():
+    snapshot = SlaveAnalyzer(
+        SlaveConfig(),
+        send_frame=lambda _: None,
+    ).snapshot(monotonic_ns=1)
+    assert snapshot.reliability == TimeReliability.UNKNOWN
+    assert snapshot.grandmaster_clock_class is None
 
 
 def test_slave_computes_offset_and_frequency_from_sync_pair():

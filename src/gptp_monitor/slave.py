@@ -41,6 +41,23 @@ class SlaveState(str, Enum):
     LOST = "LOST"
 
 
+class TimeReliability(str, Enum):
+    UNKNOWN = "UNKNOWN"
+    WAITING_GNSS = "WAITING_GNSS"
+    GNSS_LOCKED = "GNSS_LOCKED"
+    DEGRADED = "DEGRADED"
+    TRANSITIONING = "TRANSITIONING"
+    STALE = "STALE"
+
+
+CLOCK_CLASS_RELIABILITY = {
+    6: TimeReliability.GNSS_LOCKED,
+    13: TimeReliability.DEGRADED,
+    52: TimeReliability.TRANSITIONING,
+    248: TimeReliability.WAITING_GNSS,
+}
+
+
 @dataclass(frozen=True, slots=True)
 class SlaveConfig:
     domain: int = 0
@@ -48,6 +65,7 @@ class SlaveConfig:
     pdelay_timeout_ns: int = 2_000_000_000
     sync_followup_timeout_ns: int = 2_000_000_000
     pdelay_interval_ns: int = 1_000_000_000
+    reliability_stale_ns: int = 3_000_000_000
 
     def __post_init__(self) -> None:
         if not 0 <= self.domain <= 255:
@@ -57,6 +75,7 @@ class SlaveConfig:
             "pdelay_timeout_ns",
             "sync_followup_timeout_ns",
             "pdelay_interval_ns",
+            "reliability_stale_ns",
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
@@ -84,9 +103,16 @@ class SlaveSnapshot:
     sent: int = 0
     received: int = 0
     grandmaster_identity: bytes | None = None
+    announce_sequence_id: int | None = None
     grandmaster_priority1: int | None = None
     grandmaster_clock_class: int | None = None
+    grandmaster_clock_accuracy: int | None = None
+    grandmaster_clock_variance: int | None = None
     grandmaster_priority2: int | None = None
+    grandmaster_steps_removed: int | None = None
+    grandmaster_time_source: int | None = None
+    announce_age_ns: int | None = None
+    reliability: TimeReliability = TimeReliability.UNKNOWN
     offset_ns: int | None = None
     raw_offset_ns: int | None = None
     path_delay_ns: int | None = None
@@ -269,9 +295,14 @@ class SlaveAnalyzer:
             self._snapshot,
             state=SlaveState.LOCKED,
             grandmaster_identity=data.grandmaster_identity,
+            announce_sequence_id=data.sequence_id,
             grandmaster_priority1=data.priority1,
             grandmaster_clock_class=data.clock_class,
+            grandmaster_clock_accuracy=data.clock_accuracy,
+            grandmaster_clock_variance=data.variance,
             grandmaster_priority2=data.priority2,
+            grandmaster_steps_removed=data.steps_removed,
+            grandmaster_time_source=data.time_source,
             announce_interval_ns=announce_interval,
             last_update_monotonic_ns=now,
         )
@@ -587,6 +618,28 @@ class SlaveAnalyzer:
                 + len(expired_syncs),
                 last_update_monotonic_ns=now,
             )
+        announce_age_ns = (
+            None
+            if self._last_announce_mono is None
+            else max(0, now - self._last_announce_mono)
+        )
+        if self._snapshot.grandmaster_clock_class is None:
+            reliability = TimeReliability.UNKNOWN
+        elif (
+            announce_age_ns is None
+            or announce_age_ns > self.config.reliability_stale_ns
+        ):
+            reliability = TimeReliability.STALE
+        else:
+            reliability = CLOCK_CLASS_RELIABILITY.get(
+                self._snapshot.grandmaster_clock_class,
+                TimeReliability.UNKNOWN,
+            )
+        self._snapshot = replace(
+            self._snapshot,
+            announce_age_ns=announce_age_ns,
+            reliability=reliability,
+        )
         return self._snapshot
 
     def _clear_lock(self, now: int) -> None:
@@ -594,9 +647,16 @@ class SlaveAnalyzer:
             self._snapshot,
             state=SlaveState.SEARCHING,
             grandmaster_identity=None,
+            announce_sequence_id=None,
             grandmaster_priority1=None,
             grandmaster_clock_class=None,
+            grandmaster_clock_accuracy=None,
+            grandmaster_clock_variance=None,
             grandmaster_priority2=None,
+            grandmaster_steps_removed=None,
+            grandmaster_time_source=None,
+            announce_age_ns=None,
+            reliability=TimeReliability.UNKNOWN,
             offset_ns=None,
             raw_offset_ns=None,
             path_delay_ns=None,
