@@ -11,8 +11,10 @@ from gptp_monitor.messages import (
 )
 from gptp_monitor.protocol import (
     PDELAY_REQ,
+    PtpHeader,
     PtpFormatError,
     PtpTimestamp,
+    build_ethernet_frame,
     extract_ptp_payload,
     parse_ptp_header,
 )
@@ -56,6 +58,34 @@ def test_parse_announce_returns_grandmaster_fields():
     assert announce.source_port_identity == bytes.fromhex(
         "8e7362fffea51355" "0001"
     )
+
+
+def test_parse_m22_extended_announce_layout():
+    body = bytes.fromhex(
+        "000000000000000000000000007f06feffff7f"
+        "8e7362fffea513550000a0000800080000000000000000"
+    )
+    header = PtpHeader(
+        message_type=0x0B,
+        source_port_identity=bytes.fromhex("8e7362fffea513550001"),
+        sequence_id=29,
+    )
+    frame = build_ethernet_frame(
+        "8e:73:62:a5:13:55",
+        header.to_bytes(34 + len(body)) + body,
+    )
+    announce = parse_announce(frame)
+    assert announce.sequence_id == 29
+    assert announce.priority1 == 127
+    assert announce.clock_class == 6
+    assert announce.clock_accuracy == 0xFE
+    assert announce.variance == 0xFFFF
+    assert announce.priority2 == 127
+    assert announce.grandmaster_identity == bytes.fromhex(
+        "8e7362fffea51355"
+    )
+    assert announce.steps_removed == 0
+    assert announce.time_source == 0xA0
 
 
 def test_parse_follow_up_returns_precise_origin_timestamp():

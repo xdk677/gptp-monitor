@@ -102,6 +102,12 @@ and the complete clockIdentity.
 itself prove offset accuracy; combine it with Sync freshness and the measured
 offset when investigating timing quality.
 
+M22 firmware may use a vendor-extended Announce layout containing a 10-byte
+reserved field before the remaining standard Announce fields. The parser
+automatically recognizes this layout when the Grandmaster identity follows
+the shifted fields, so the displayed clockClass matches the customer's M22
+protocol tooling.
+
 ## Frequency
 
 ```text

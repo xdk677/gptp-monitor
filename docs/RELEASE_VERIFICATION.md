@@ -3,6 +3,17 @@
 Verified on 2026-11-20 on Windows 10 x64 with Python 3.14 and Npcap
 1.x installed.
 
+## gPTP clockClass reliability
+
+- M22 master `192.168.2.121` was reachable and mapped to
+  `8E-73-62-A5-13-55`.
+- Announce parsing recognized the M22 vendor-extended layout.
+- Live Announce sequence `13851` reported `clockClass=6`,
+  `clockAccuracy=0xFE`, `clockVariance=65535`, `priority1=127`,
+  `priority2=127`, `stepsRemoved=0`, and `timeSource=0xA0`.
+- Automated tests cover `248 -> 6 -> 13 -> 6 -> 52`, unknown values and
+  the three-second `STALE` rule.
+
 ## Automated tests
 
 ```text

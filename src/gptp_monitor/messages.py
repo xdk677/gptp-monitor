@@ -280,18 +280,27 @@ def _checked_payload(
 def parse_announce(frame: bytes) -> AnnounceData:
     header, payload = _checked_payload(frame, ANNOUNCE, 54)
     body = payload[34:]
+    # Some M22 firmware inserts a 10-byte reserved/timestamp field after the
+    # UTC-offset fields. Wireshark and customer tools expose the standard
+    # remaining Announce fields shifted by ten bytes.
+    extended_m22 = (
+        len(body) >= 30
+        and body[3:13] == b"\x00" * 10
+        and body[19:27] == header.source_port_identity[:8]
+    )
+    offset = 13 if extended_m22 else 3
     return AnnounceData(
         sequence_id=header.sequence_id,
         source_port_identity=header.source_port_identity,
         current_utc_offset=int.from_bytes(body[0:2], "big"),
-        priority1=body[3],
-        clock_class=body[4],
-        clock_accuracy=body[5],
-        variance=int.from_bytes(body[6:8], "big"),
-        priority2=body[8],
-        grandmaster_identity=body[9:17],
-        steps_removed=int.from_bytes(body[17:19], "big"),
-        time_source=body[19],
+        priority1=body[offset],
+        clock_class=body[offset + 1],
+        clock_accuracy=body[offset + 2],
+        variance=int.from_bytes(body[offset + 3:offset + 5], "big"),
+        priority2=body[offset + 5],
+        grandmaster_identity=body[offset + 6:offset + 14],
+        steps_removed=int.from_bytes(body[offset + 14:offset + 16], "big"),
+        time_source=body[offset + 16],
     )
 
 
