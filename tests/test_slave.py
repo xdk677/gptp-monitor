@@ -197,6 +197,25 @@ def test_class_6_becomes_stale_after_three_seconds_without_announce():
     assert stale.announce_age_ns == 3_100_000_000
 
 
+@pytest.mark.parametrize("silence_s", [6, 20])
+def test_stale_reliability_persists_after_lock_cleanup(silence_s):
+    analyzer = SlaveAnalyzer(SlaveConfig(), send_frame=lambda _: None)
+    analyzer.handle_frame(
+        _builder().announce(
+            timestamp=PtpTimestamp(1, 0),
+            clock_class=6,
+        ),
+        received_ns=1,
+        monotonic_ns=1_000_000_000,
+    )
+
+    snapshot = analyzer.snapshot(
+        monotonic_ns=1_000_000_000 + silence_s * 1_000_000_000
+    )
+    assert snapshot.reliability == TimeReliability.STALE
+    assert snapshot.announce_age_ns == silence_s * 1_000_000_000
+
+
 def test_no_announce_never_reports_locked():
     snapshot = SlaveAnalyzer(
         SlaveConfig(),

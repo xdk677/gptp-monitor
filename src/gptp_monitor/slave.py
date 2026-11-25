@@ -154,6 +154,8 @@ class SlaveAnalyzer:
         self._pdelay_resp: dict[int, int] = {}
         self._pending_pdelay_extended: dict[int, bool] = {}
         self._last_announce_mono: int | None = None
+        self._last_announce_received_mono: int | None = None
+        self._ever_announced = False
         self._last_announce_seen: int | None = None
         self._last_sync_master_ns: int | None = None
         self._last_sync_local_ns: int | None = None
@@ -291,6 +293,8 @@ class SlaveAnalyzer:
             announce_interval = now - self._last_announce_seen
         self._last_announce_seen = now
         self._last_announce_mono = now
+        self._last_announce_received_mono = now
+        self._ever_announced = True
         self._snapshot = replace(
             self._snapshot,
             state=SlaveState.LOCKED,
@@ -620,16 +624,17 @@ class SlaveAnalyzer:
             )
         announce_age_ns = (
             None
-            if self._last_announce_mono is None
-            else max(0, now - self._last_announce_mono)
+            if self._last_announce_received_mono is None
+            else max(0, now - self._last_announce_received_mono)
         )
-        if self._snapshot.grandmaster_clock_class is None:
-            reliability = TimeReliability.UNKNOWN
-        elif (
-            announce_age_ns is None
+        if self._ever_announced and (
+            self._snapshot.grandmaster_clock_class is None
+            or announce_age_ns is None
             or announce_age_ns > self.config.reliability_stale_ns
         ):
             reliability = TimeReliability.STALE
+        elif self._snapshot.grandmaster_clock_class is None:
+            reliability = TimeReliability.UNKNOWN
         else:
             reliability = CLOCK_CLASS_RELIABILITY.get(
                 self._snapshot.grandmaster_clock_class,
