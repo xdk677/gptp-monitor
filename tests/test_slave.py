@@ -88,6 +88,30 @@ def test_parse_m22_extended_announce_layout():
     assert announce.time_source == 0xA0
 
 
+def test_parse_m22_extended_announce_ignores_nonzero_prefix_byte():
+    body = bytes.fromhex(
+        "000000000000000000000000f77f06feffff7f"
+        "8e7362fffea513550000a0000800080000000000000000"
+    )
+    header = PtpHeader(
+        message_type=0x0B,
+        source_port_identity=bytes.fromhex("8e7362fffea513550001"),
+        sequence_id=30,
+    )
+    frame = build_ethernet_frame(
+        "8e:73:62:a5:13:55",
+        header.to_bytes(34 + len(body)) + body,
+    )
+
+    announce = parse_announce(frame)
+    assert announce.priority1 == 127
+    assert announce.clock_class == 6
+    assert announce.clock_accuracy == 0xFE
+    assert announce.priority2 == 127
+    assert announce.steps_removed == 0
+    assert announce.time_source == 0xA0
+
+
 def test_parse_follow_up_returns_precise_origin_timestamp():
     timestamp = PtpTimestamp(1234, 5678)
     frame = _builder().follow_up(sequence_id=9, timestamp=timestamp)

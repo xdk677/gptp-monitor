@@ -285,7 +285,6 @@ def parse_announce(frame: bytes) -> AnnounceData:
     # remaining Announce fields shifted by ten bytes.
     extended_m22 = (
         len(body) >= 30
-        and body[3:13] == b"\x00" * 10
         and body[19:27] == header.source_port_identity[:8]
     )
     offset = 13 if extended_m22 else 3
