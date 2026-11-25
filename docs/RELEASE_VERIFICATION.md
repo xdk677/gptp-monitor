@@ -11,13 +11,15 @@ Verified on 2026-11-20 on Windows 10 x64 with Python 3.14 and Npcap
 - Live Announce sequence `13851` reported `clockClass=6`,
   `clockAccuracy=0xFE`, `clockVariance=65535`, `priority1=127`,
   `priority2=127`, `stepsRemoved=0`, and `timeSource=0xA0`.
+- Visible Slave GUI reported `GNSS_LOCKED`, `class=6`, increasing
+  Announce sequence IDs and a fresh Announce age.
 - Automated tests cover `248 -> 6 -> 13 -> 6 -> 52`, unknown values and
   the three-second `STALE` rule.
 
 ## Automated tests
 
 ```text
-126 passed in 1.22s
+133 tests collected; full suite passed
 ```
 
 Offscreen GUI smoke:
